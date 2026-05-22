@@ -11,11 +11,44 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Unoludo Test</title>
+    <title>Unoludo</title>
+    <link rel="stylesheet" href="./default.css">
 </head>
 <body>
-    <h1>Unoludo Test Page</h1>
+    <main class="game-layout">
+        <section class="left-panel">
+            <h1>Unoludo</h1>
+            <p id="current-player">Current Player: -</p>
+            <p id="action-message">Select a card, then select one of your planes.</p>
+            <div class="button-group">
+                <button id="reset-demo">Reset Demo</button>
+                <button id="show-track-demo">Move Blue to Track 0</button>
+                <button id="show-home-demo">Move Blue to Home 0</button>
+            </div>
+        </section>
 
-    <script type="module" src="./test.js"></script>
+        <section class="board-panel">
+            <div class="board-wrapper" id="board-wrapper">
+                <img class="board-image" src="./assets/img/Unoludo_Board.png" alt="Unoludo board">
+                <div id="piece-layer"></div>
+            </div>
+        </section>
+
+        <section class="right-panel">
+            <h2>Game Info</h2>
+            <p id="top-discard">Top Discard: -</p>
+            <p id="draw-count">Draw Pile: -</p>
+
+            <h2>Log</h2>
+            <ol id="game-log"></ol>
+        </section>
+
+        <section class="hand-panel">
+            <h2>Your Hand</h2>
+            <div id="hand-cards" class="hand-cards"></div>
+        </section>
+    </main>
+
+    <script type="module" src="./main.js"></script>
 </body>
 </html>

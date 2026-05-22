@@ -1,0 +1,154 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #071a38;
+    color: #f8fafc;
+    font-family: Arial, sans-serif;
+}
+
+.game-layout {
+    width: 100vw;
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 260px 1fr 320px;
+    grid-template-rows: 1fr 180px;
+    grid-template-areas:
+        "left board right"
+        "hand hand hand";
+    gap: 12px;
+    padding: 12px;
+}
+
+.left-panel,
+.right-panel,
+.hand-panel {
+    background: rgba(15, 23, 42, 0.92);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 16px;
+    padding: 16px;
+    overflow: auto;
+}
+
+.left-panel {
+    grid-area: left;
+}
+
+.board-panel {
+    grid-area: board;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.right-panel {
+    grid-area: right;
+}
+
+.hand-panel {
+    grid-area: hand;
+}
+
+.board-wrapper {
+    position: relative;
+    width: min(100%, 76vh);
+    aspect-ratio: 1 / 1;
+}
+
+.board-image {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+#piece-layer {
+    position: absolute;
+    inset: 0;
+}
+
+.piece {
+    position: absolute;
+    width: 4.2%;
+    aspect-ratio: 1 / 1;
+    transform: translate(-50%, -50%);
+    transition: left 240ms ease, top 240ms ease;
+}
+
+.piece img {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.piece.shielded {
+    filter: drop-shadow(0 0 8px #f8fafc);
+}
+
+.piece.frozen {
+    opacity: 0.55;
+}
+
+.hand-cards {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+}
+
+.card-image {
+    height: 140px;
+    border-radius: 10px;
+}
+
+.button-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+button {
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 10px;
+    background: #2563eb;
+    color: white;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #1d4ed8;
+}
+.selected-card {
+    outline: 4px solid #facc15;
+    transform: translateY(-8px);
+}
+
+.piece {
+    cursor: pointer;
+}
+.playable-card {
+    box-shadow: 0 0 0 3px #22c55e;
+}
+
+.selected-card {
+    outline: 4px solid #facc15;
+    transform: translateY(-8px);
+}
+@media (max-width: 1000px) {
+    .game-layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto auto;
+        grid-template-areas:
+            "left"
+            "board"
+            "right"
+            "hand";
+    }
+
+    .board-wrapper {
+        width: min(94vw, 70vh);
+    }
+}
