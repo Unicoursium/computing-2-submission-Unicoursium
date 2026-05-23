@@ -6,7 +6,7 @@ import UnoludoAssets from "./assets.js";
 /*global document, window*/
 
 let state = Unoludo.create_initial_state([
-    "You",
+    "Player",
     "CPU Green",
     "CPU Red",
     "CPU Yellow"
@@ -18,6 +18,8 @@ let selected_card_id = undefined;
 let combo_card_id = undefined;
 let target_mode = undefined;
 let cpu_timer = undefined;
+let winner_popup_shown = false;
+const CPU_TURN_DELAY = 1600;
 const piece_elements = Object.create(null);
 const draw_end_turn_button = document.getElementById("draw-end-turn");
 const clear_selection = function () {
@@ -25,7 +27,61 @@ const clear_selection = function () {
     combo_card_id = undefined;
     target_mode = undefined;
 };
+const colour_overlay = document.getElementById("colour-overlay");
+const colour_choice_buttons = document.querySelectorAll(".colour-choice");
 
+const wild4_option_overlay = document.getElementById("wild4-option-overlay");
+const wild4_draw4_choice = document.getElementById("wild4-draw4-choice");
+const wild4_move_choice = document.getElementById("wild4-move-choice");
+const winner_overlay = document.getElementById("winner-overlay");
+const winner_name = document.getElementById("winner-name");
+const winner_restart_button = document.getElementById("winner-restart");
+const player_colour_hex = function (colour) {
+    if (colour === "blue") {
+        return "#4979E0";
+    }
+
+    if (colour === "green") {
+        return "#48DB73";
+    }
+
+    if (colour === "red") {
+        return "#BD2222";
+    }
+
+    if (colour === "yellow") {
+        return "#E5CA22";
+    }
+
+    return "#f8fafc";
+};
+const show_winner_popup = function () {
+    let winner;
+
+    if (state.winner === undefined || winner_popup_shown) {
+        return;
+    }
+
+    winner = state.players[state.winner];
+
+    winner_name.textContent = winner.name;
+    winner_name.style.color = player_colour_hex(winner.colour);
+
+    winner_overlay.classList.remove("hidden");
+    winner_popup_shown = true;
+};
+
+const hide_winner_popup = function () {
+    winner_overlay.classList.add("hidden");
+};
+const played_card_title = document.getElementById("played-card-title");
+const played_card_image = document.getElementById("played-card-image");
+const open_log_button = document.getElementById("open-log");
+const log_overlay = document.getElementById("log-overlay");
+const close_log_button = document.getElementById("close-log");
+const log_overlay_list = document.getElementById("log-overlay-list");
+const debug_move_button = document.getElementById("debug-move");
+const give_card_button = document.getElementById("give-card");
 const help_overlay = document.getElementById("help-overlay");
 const help_image = document.getElementById("help-image");
 const help_page_indicator = document.getElementById("help-page-indicator");
@@ -40,6 +96,293 @@ const help_pages = Object.freeze([
 ]);
 
 let help_page_index = 0;
+
+const render_log_overlay = function () {
+    log_overlay_list.replaceChildren();
+
+    state.log.forEach(function (message) {
+        const item = document.createElement("li");
+        item.textContent = message;
+        log_overlay_list.appendChild(item);
+    });
+};
+
+const open_log = function () {
+    render_log_overlay();
+    log_overlay.classList.remove("hidden");
+};
+
+const close_log = function () {
+    log_overlay.classList.add("hidden");
+};
+
+const player_id_by_colour = function (colour) {
+    const player = state.players.find(function (candidate) {
+        return candidate.colour === colour;
+    });
+
+    if (player === undefined) {
+        return undefined;
+    }
+
+    return player.id;
+};
+
+const debug_plane_from_input = function (position_input) {
+    const trimmed = position_input.trim().toLowerCase();
+    let value;
+
+    if (trimmed === "base") {
+        return Object.freeze({
+            status: "base",
+            position: -1,
+            shielded: false,
+            frozen: false
+        });
+    }
+
+    if (trimmed === "finished") {
+        return Object.freeze({
+            status: "finished",
+            position: Unoludo.home_lane_length,
+            shielded: false,
+            frozen: false
+        });
+    }
+
+    if (trimmed.startsWith("home:")) {
+        value = Number(trimmed.slice(5));
+
+        if (
+            Number.isInteger(value) &&
+            value >= 0 &&
+            value < Unoludo.home_lane_length
+        ) {
+            return Object.freeze({
+                status: "home",
+                position: value,
+                shielded: false,
+                frozen: false
+            });
+        }
+
+        return undefined;
+    }
+
+    if (trimmed.startsWith("track:")) {
+        value = Number(trimmed.slice(6));
+    } else {
+        value = Number(trimmed);
+    }
+
+    if (
+        Number.isInteger(value) &&
+        value >= 0 &&
+        value < Unoludo.track_length
+    ) {
+        return Object.freeze({
+            status: "track",
+            position: value,
+            shielded: false,
+            frozen: false
+        });
+    }
+
+    return undefined;
+};
+
+debug_move_button.addEventListener("click", function () {
+    const colour = window.prompt(
+        "Choose plane colour: blue, green, red, yellow"
+    );
+
+    const plane_index_text = window.prompt(
+        "Choose plane index: 0, 1, 2, or 3"
+    );
+
+    const position_text = window.prompt(
+        "Enter position: number, track:number, home:number, base, or finished"
+    );
+
+    const player_id = player_id_by_colour(
+        colour === null
+        ? ""
+        : colour.trim().toLowerCase()
+    );
+
+    const plane_index = Number(plane_index_text);
+    const new_plane = (
+        position_text === null
+        ? undefined
+        : debug_plane_from_input(position_text)
+    );
+
+    if (
+        player_id === undefined ||
+        !Number.isInteger(plane_index) ||
+        plane_index < 0 ||
+        plane_index > 3 ||
+        new_plane === undefined
+    ) {
+        action_message.textContent = "Debug move failed: invalid input.";
+        return;
+    }
+
+    state = Unoludo.update_plane(
+        state,
+        player_id,
+        plane_index,
+        new_plane
+    );
+
+    clear_selection();
+    action_message.textContent = (
+        "Debug moved " + colour + " plane " + plane_index + "."
+    );
+    render();
+});
+
+const colour_from_card_code = function (letter) {
+    if (letter === "B") {
+        return "blue";
+    }
+
+    if (letter === "G") {
+        return "green";
+    }
+
+    if (letter === "R") {
+        return "red";
+    }
+
+    if (letter === "Y") {
+        return "yellow";
+    }
+
+    return undefined;
+};
+
+const create_debug_card_from_code = function (code) {
+    const normalised = code.trim().toUpperCase();
+    const colour = colour_from_card_code(normalised[0]);
+    const symbol = normalised.slice(1);
+    const unique_suffix = Date.now() + "-" + Math.random().toString(36).slice(2);
+    let value;
+
+    if (normalised === "PW") {
+        return Unoludo.card(
+            "debug-wild-" + unique_suffix,
+            "wild",
+            "wild"
+        );
+    }
+
+    if (normalised === "P4") {
+        return Unoludo.card(
+            "debug-wild4-" + unique_suffix,
+            "wild4",
+            "wild"
+        );
+    }
+
+    if (
+        normalised === "P7" ||
+        normalised === "P8" ||
+        normalised === "P9"
+    ) {
+        value = Number(normalised.slice(1));
+
+        return Unoludo.card(
+            "debug-reward-" + value + "-" + unique_suffix,
+            "reward",
+            "wild",
+            value
+        );
+    }
+
+    if (colour === undefined) {
+        return undefined;
+    }
+
+    if (/^[0-6]$/.test(symbol)) {
+        value = Number(symbol);
+
+        return Unoludo.card(
+            "debug-" + colour + "-number-" + value + "-" + unique_suffix,
+            "number",
+            colour,
+            value
+        );
+    }
+
+    if (symbol === "S") {
+        return Unoludo.card(
+            "debug-" + colour + "-skip-" + unique_suffix,
+            "skip",
+            colour
+        );
+    }
+
+    if (symbol === "R") {
+        return Unoludo.card(
+            "debug-" + colour + "-reverse-" + unique_suffix,
+            "reverse",
+            colour
+        );
+    }
+
+    if (symbol === "P" || symbol === "+2") {
+        return Unoludo.card(
+            "debug-" + colour + "-draw2-" + unique_suffix,
+            "draw2",
+            colour
+        );
+    }
+
+    return undefined;
+};
+
+const give_card_to_current_player = function (card) {
+    const player = Unoludo.current_player(state);
+    const updated_player = Object.freeze({
+        id: player.id,
+        name: player.name,
+        colour: player.colour,
+        kind: player.kind,
+        hand: Unoludo.sorted_hand(player.hand.concat([card])),
+        planes: player.planes
+    });
+
+    state = Unoludo.update_player(
+        state,
+        player.id,
+        updated_player
+    );
+};
+
+give_card_button.addEventListener("click", function () {
+    const code = window.prompt(
+        "Enter card code, e.g. B3, YR, GS, RP, PW, P4, P7, P8, P9"
+    );
+
+    let card;
+
+    if (code === null) {
+        return;
+    }
+
+    card = create_debug_card_from_code(code);
+
+    if (card === undefined) {
+        action_message.textContent = "Give card failed: invalid card code.";
+        return;
+    }
+
+    give_card_to_current_player(card);
+    clear_selection();
+    action_message.textContent = "Gave card " + code.toUpperCase() + " to current player.";
+    render();
+});
 
 const render_help_page = function () {
     help_image.src = help_pages[help_page_index];
@@ -79,6 +422,8 @@ open_help_button.addEventListener("click", open_help);
 close_help_button.addEventListener("click", close_help);
 help_prev_button.addEventListener("click", show_previous_help_page);
 help_next_button.addEventListener("click", show_next_help_page);
+open_log_button.addEventListener("click", open_log);
+close_log_button.addEventListener("click", close_log);
 
 const is_active_plane = function (plane) {
     return plane.status === "track" || plane.status === "home";
@@ -399,7 +744,8 @@ const find_cpu_reward_move = function (cpu_state, player) {
                 cpu_state,
                 card.id,
                 player.id,
-                plane_index
+                plane_index,
+                choose_colour_for_cpu(player)
             );
 
             if (next_state !== undefined) {
@@ -423,7 +769,8 @@ const find_cpu_reward_move = function (cpu_state, player) {
                     cpu_state,
                     card.id,
                     target_player.id,
-                    plane_index
+                    plane_index,
+                    choose_colour_for_cpu(player)
                 );
 
                 if (next_state !== undefined) {
@@ -499,30 +846,55 @@ const schedule_cpu_if_needed = function () {
     cpu_timer = window.setTimeout(function () {
         cpu_timer = undefined;
         cpu_take_turn();
-    }, 700);
+    }, CPU_TURN_DELAY);
 };
 
-const ask_for_colour = function () {
-    const chosen_colour = window.prompt(
-        "Choose a colour: blue, green, red, yellow"
-    );
+const choose_colour_with_modal = function () {
+    return new Promise(function (resolve) {
+        const close_with_colour = function (colour) {
+            colour_overlay.classList.add("hidden");
 
-    if (
-        chosen_colour === "blue" ||
-        chosen_colour === "green" ||
-        chosen_colour === "red" ||
-        chosen_colour === "yellow"
-    ) {
-        return chosen_colour;
-    }
+            colour_choice_buttons.forEach(function (button) {
+                button.onclick = null;
+            });
 
-    return undefined;
+            resolve(colour);
+        };
+
+        colour_choice_buttons.forEach(function (button) {
+            button.onclick = function () {
+                close_with_colour(button.dataset.colour);
+            };
+        });
+
+        colour_overlay.classList.remove("hidden");
+    });
+};
+
+const choose_wild4_option_with_modal = function () {
+    return new Promise(function (resolve) {
+        wild4_draw4_choice.onclick = function () {
+            wild4_option_overlay.classList.add("hidden");
+            wild4_draw4_choice.onclick = null;
+            wild4_move_choice.onclick = null;
+            resolve("draw4");
+        };
+
+        wild4_move_choice.onclick = function () {
+            wild4_option_overlay.classList.add("hidden");
+            wild4_draw4_choice.onclick = null;
+            wild4_move_choice.onclick = null;
+            resolve("advance_all");
+        };
+
+        wild4_option_overlay.classList.remove("hidden");
+    });
 };
 const piece_layer = document.getElementById("piece-layer");
 const discard_layer = document.getElementById("discard-layer");
 const hand_cards = document.getElementById("hand-cards");
 const current_player_text = document.getElementById("current-player");
-const top_discard_text = document.getElementById("top-discard");
+const top_discard = document.getElementById("top-discard");
 const draw_count_text = document.getElementById("draw-count");
 const game_log = document.getElementById("game-log");
 const action_message = document.getElementById("action-message");
@@ -534,7 +906,7 @@ const finish_successful_action = function (next_state, message) {
     render();
 };
 
-const play_selected_card_without_plane = function () {
+const play_selected_card_without_plane = async function () {
     const player = Unoludo.current_player(state);
     const card = Unoludo.card_in_hand(player, selected_card_id);
     let next_state;
@@ -616,25 +988,13 @@ const play_selected_card_without_plane = function () {
     }
 
     if (card.type === "wild4") {
-        const use_advance = window.confirm(
-            "Wild +4: OK = advance all active planes by 2, Cancel = draw 4 cards."
-        );
-
-        const chosen_colour = ask_for_colour();
-
-        if (chosen_colour === undefined) {
-            action_message.textContent = "Wild +4 needs a valid colour.";
-            return;
-        }
+        const option = await choose_wild4_option_with_modal();
+        const chosen_colour = await choose_colour_with_modal();
 
         next_state = Unoludo.play_wild4_card(
             state,
             selected_card_id,
-            (
-                use_advance
-                ? "advance_all"
-                : "draw4"
-            ),
+            option,
             chosen_colour
         );
 
@@ -646,11 +1006,13 @@ const play_selected_card_without_plane = function () {
         finish_successful_action(
             next_state,
             (
-                use_advance
+                option === "advance_all"
                 ? "Played Wild +4 and advanced all active planes."
                 : "Played Wild +4 and drew four cards."
             )
         );
+
+        return;
     }
 
     if (card.type === "skip") {
@@ -666,12 +1028,15 @@ const play_selected_card_without_plane = function () {
     }
 };
 
-const play_reward_on_plane = function (target_player_id, plane_index) {
+const play_reward_on_plane = async function (target_player_id, plane_index) {
+    const chosen_colour = await choose_colour_with_modal();
+
     const next_state = Unoludo.play_reward_card(
         state,
         selected_card_id,
         target_player_id,
-        plane_index
+        plane_index,
+        chosen_colour
     );
 
     if (next_state === undefined) {
@@ -682,7 +1047,7 @@ const play_reward_on_plane = function (target_player_id, plane_index) {
     target_mode = undefined;
     finish_successful_action(
         next_state,
-        "Played reward card and moved a plane."
+        "Played reward card, chose " + chosen_colour + ", and moved a plane."
     );
 };
 
@@ -1066,7 +1431,7 @@ const render_hand = function () {
 
                 clear_selection();
                 selected_card_id = card.id;
-                play_selected_card_without_plane();
+                play_selected_card_without_plane().then(render);
                 render();
                 return;
             }
@@ -1085,14 +1450,14 @@ const render_hand = function () {
 
                 clear_selection();
                 selected_card_id = card.id;
-                play_selected_card_without_plane();
+                play_selected_card_without_plane().then(render);
                 render();
                 return;
             }
 
             clear_selection();
             selected_card_id = card.id;
-            play_selected_card_without_plane();
+            play_selected_card_without_plane().then(render);
             render();
         });
 
@@ -1101,24 +1466,48 @@ const render_hand = function () {
 };
 
 const render_info = function () {
-    const top_card = Unoludo.top_discard(state);
     const current_player = Unoludo.current_player(state);
+    const previous_player_id = (
+        state.current_player - 1 + state.players.length
+    ) % state.players.length;
+    const previous_player = state.players[previous_player_id];
+    const top_card = Unoludo.top_discard(state);
+    let winner;
 
-    current_player_text.textContent = "Current Player: " + current_player.name;
-    top_discard_text.textContent = "Top Discard: " + top_card.id;
-    draw_count_text.textContent = "Draw Pile: " + state.draw_pile.length;
-    if (current_player.skip_locked) {
-        draw_end_turn_button.textContent = "End Skipped Turn";
+    if (state.winner !== undefined) {
+        winner = state.players[state.winner];
+
+        current_player_text.textContent = "Winner: " + winner.name;
+        action_message.textContent = winner.name + " wins the game!";
     } else {
-        draw_end_turn_button.textContent = "Draw 1 & End Turn";
+        current_player_text.textContent = (
+            "Current Player: " + current_player.name
+        );
     }
-    game_log.replaceChildren();
 
-    state.log.forEach(function (message) {
-        const item = document.createElement("li");
-        item.textContent = message;
-        game_log.appendChild(item);
-    });
+    if (state.log.length === 1) {
+        played_card_title.textContent = "The First Card:";
+    } else {
+        played_card_title.textContent = previous_player.name + " Played:";
+    }
+
+    played_card_image.src = UnoludoAssets.card_image(top_card);
+    played_card_image.alt = "Last played card: " + top_card.id;
+
+    draw_count_text.textContent = "Draw Pile: " + state.draw_pile.length;
+
+    if (game_log !== null) {
+        game_log.replaceChildren();
+
+        state.log.slice(-5).forEach(function (message) {
+            const item = document.createElement("li");
+            item.textContent = message;
+            game_log.appendChild(item);
+        });
+    }
+    if (state.winner !== undefined) {
+        show_winner_popup();
+    }
 };
 
 const render = function () {
@@ -1149,34 +1538,35 @@ const set_demo_plane = function (status, position) {
     render();
 };
 
-document.getElementById("reset-demo").addEventListener("click", function () {
+const restart_game = function () {
     Object.keys(piece_elements).forEach(function (piece_key) {
         piece_elements[piece_key].remove();
         delete piece_elements[piece_key];
     });
 
+    if (cpu_timer !== undefined) {
+        window.clearTimeout(cpu_timer);
+        cpu_timer = undefined;
+    }
+
     state = Unoludo.create_initial_state([
-        "You",
+        "Player",
         "CPU Green",
         "CPU Red",
         "CPU Yellow"
     ], {
         shuffle: true
     });
-
     rendered_discard_card_id = undefined;
+    winner_popup_shown = false;
     clear_selection();
+    hide_winner_popup();
     action_message.textContent = "Game reset.";
     render();
-});
+};
 
-document.getElementById("show-track-demo").addEventListener("click", function () {
-    set_demo_plane("track", 0);
-});
-
-document.getElementById("show-home-demo").addEventListener("click", function () {
-    set_demo_plane("home", 0);
-});
+document.getElementById("reset-demo").addEventListener("click", restart_game);
+winner_restart_button.addEventListener("click", restart_game);
 
 document.getElementById("draw-end-turn").addEventListener("click", function () {
     const next_state = Unoludo.draw_one_and_end_turn(state);
@@ -1189,10 +1579,14 @@ document.getElementById("draw-end-turn").addEventListener("click", function () {
     }
 });
 
-document.getElementById("cancel-action").addEventListener("click", function () {
-    clear_selection();
-    action_message.textContent = "Selection cancelled.";
-    render();
-});
+const cancel_action_button = document.getElementById("cancel-action");
+
+if (cancel_action_button !== null) {
+    cancel_action_button.addEventListener("click", function () {
+        clear_selection();
+        action_message.textContent = "Selection cancelled.";
+        render();
+    });
+}
 
 render();
